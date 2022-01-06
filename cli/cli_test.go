@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -110,13 +111,20 @@ func TestJobPlan(t *testing.T) {
 	reset()
 }
 
+func TestJobPlan_BadJob(t *testing.T) {
+	testInit(t)
+
+	exitCode := planCmd().Run([]string{badPack})
+	// Should return 255 indicating an error occurred
+	require.Equal(t, 255, exitCode)
+
+	reset()
+}
+
 // Confirm that another pack with the same job names but a different deployment name fails
 func TestJobPlanConflictingDeployment(t *testing.T) {
 	testInit(t)
-
-	defer func() {
-		clearJob(t, &cache.PackConfig{Name: testPack})
-	}()
+	defer clearJob(t, &cache.PackConfig{Name: testPack})
 
 	// Register the initial pack
 	exitCode := runCmd().Run([]string{testPack})
@@ -125,15 +133,13 @@ func TestJobPlanConflictingDeployment(t *testing.T) {
 	exitCode = runCmd().Run([]string{testPack, testRefFlag})
 	require.Equal(t, 1, exitCode)
 
-	reset()
+	// reset is run in clearJob
 }
 
 // Check for conflict with non-pack job i.e. no meta
 func TestJobPlanConflictingNonPackJob(t *testing.T) {
 	testInit(t)
-	defer func() {
-		clearJob(t, &cache.PackConfig{Name: testPack})
-	}()
+	defer clearJob(t, &cache.PackConfig{Name: testPack})
 
 	// Register non pack job
 	nomadExec(t, "run", "../fixtures/simple.nomad")
@@ -142,7 +148,7 @@ func TestJobPlanConflictingNonPackJob(t *testing.T) {
 	exitCode := planCmd().Run([]string{testPack})
 	require.Equal(t, 255, exitCode)
 
-	reset()
+	// reset is run in clearJob
 }
 
 func TestJobStop(t *testing.T) {
@@ -280,9 +286,7 @@ func TestFlagProvidedButNotDefined(t *testing.T) {
 
 func TestStatus(t *testing.T) {
 	testInit(t)
-	defer func() {
-		clearJob(t, &cache.PackConfig{Name: testPack})
-	}()
+	defer clearJob(t, &cache.PackConfig{Name: testPack})
 
 	exitCode := runCmd().Run([]string{testPack})
 	require.Equal(t, 0, exitCode)
@@ -316,7 +320,7 @@ func TestStatus(t *testing.T) {
 		})
 	}
 
-	reset()
+	// reset is done in clearJob
 }
 
 func TestStatusFails(t *testing.T) {
@@ -332,6 +336,7 @@ func TestStatusFails(t *testing.T) {
 
 var nomadAddr string
 var testPack = "simple_service"
+var badPack = "../fixtures/bad_pack"
 var testRefFlag = "--ref=48eb7d5"
 
 // reduce boilerplate copy pasta with a factory method.
@@ -365,8 +370,25 @@ func testInit(t *testing.T) {
 	nomadAddr = os.Getenv("NOMAD_ADDR")
 	_ = os.Setenv("NOMAD_ADDR", "http://127.0.0.1:4646")
 
+	_, err := os.Stat(path.Join(cache.DefaultCachePath(), cache.DefaultRegistryName, "simple_service@latest"))
+	if err != nil && os.IsNotExist(err) {
+		var c *cache.Cache
+		c, err = cache.NewCache(&cache.CacheConfig{
+			Path:   cache.DefaultCachePath(),
+			Eager:  false,
+			Logger: logging.Default(),
+		})
+		require.NoError(t, err)
+		_, err = c.Add(&cache.AddOpts{
+			RegistryName: cache.DefaultRegistryName,
+			Source:       cache.DefaultRegistrySource,
+			Ref:          "latest",
+		})
+		require.NoError(t, err)
+	}
+
 	// Make sure the alternate ref registry is loaded to the environment.
-	_, err := os.Stat(path.Join(cache.DefaultCachePath(), cache.DefaultRegistryName, "simple_service@48eb7d5"))
+	_, err = os.Stat(path.Join(cache.DefaultCachePath(), cache.DefaultRegistryName, "simple_service@48eb7d5"))
 	if err != nil && os.IsNotExist(err) {
 		var c *cache.Cache
 		c, err = cache.NewCache(&cache.CacheConfig{
@@ -397,11 +419,16 @@ func clearJob(t *testing.T, cfg *cache.PackConfig) {
 }
 
 func nomadExec(t *testing.T, args ...string) {
+	var outb, errb bytes.Buffer
+
 	nomadPath, err := exec.LookPath("nomad")
 	require.NoError(t, err)
 	nomadCmd := exec.Command(nomadPath, args...)
+	nomadCmd.Stdout = &outb
+	nomadCmd.Stderr = &errb
 	err = nomadCmd.Run()
-	require.NoError(t, err)
+
+	require.NoError(t, err, "stdout: %q \nstderr: %q", outb.String(), errb.String())
 }
 
 func nomadExpectErr(t *testing.T, args ...string) {
