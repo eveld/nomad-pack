@@ -16,6 +16,7 @@ require (
 	github.com/lab47/vterm v0.0.0-20201001232628-a9dd795f94c2
 	github.com/mattn/go-isatty v0.0.12
 	github.com/mitchellh/cli v1.1.2
+	github.com/mitchellh/copystructure v1.2.0
 	github.com/mitchellh/go-glint v0.0.0-20210722152315-6515ceb4a127
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/morikuni/aec v1.0.0
@@ -25,6 +26,7 @@ require (
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
+	github.com/texttheater/golang-levenshtein/levenshtein v0.0.0-20200805054039-cae8b0eaed6c
 	github.com/zclconf/go-cty v1.9.0
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
 	golang.org/x/text v0.3.6 // indirect

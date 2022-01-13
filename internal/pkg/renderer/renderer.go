@@ -1,12 +1,14 @@
 package renderer
 
 import (
+	stdErrors "errors"
 	"fmt"
 	"path"
 	"strings"
 	"text/template"
 
 	v1 "github.com/hashicorp/nomad-openapi/v1"
+	"github.com/hashicorp/nomad-pack/internal/pkg/errors"
 	"github.com/hashicorp/nomad-pack/sdk/pack"
 )
 
@@ -89,7 +91,17 @@ func (r *Renderer) Render(p *pack.Pack, variables map[string]interface{}) (*Rend
 		var buf strings.Builder
 
 		if err := tpl.ExecuteTemplate(&buf, name, src.variables); err != nil {
-			return nil, fmt.Errorf("failed to render %s: %v", name, err)
+			execErr := errors.NewErrRenderError(err, src.variables)
+			var etnp errors.ErrTemplateNilPointerError
+			if stdErrors.As(execErr, &etnp) {
+				return nil, fmt.Errorf("failed to render %s: %w", name, etnp)
+			}
+			var etee errors.ErrTemplateExecError
+			if stdErrors.As(execErr, &etee) {
+				return nil, fmt.Errorf("failed to render %s: %w", name, etee)
+			}
+			return nil, fmt.Errorf("failed to render %s: %v", name, execErr)
+			// return nil, fmt.Errorf("failed to render %s: %v", name, err)
 		}
 
 		// Even when using "missingkey=zero", missing values will be rendered
@@ -101,7 +113,7 @@ func (r *Renderer) Render(p *pack.Pack, variables map[string]interface{}) (*Rend
 		nameSplit := strings.Split(name, "/")
 
 		// Add the rendered pack template to our output, depending on whether
-		// it's name matches that of our parent.
+		// its name matches that of our parent.
 		if nameSplit[0] == p.Name() {
 			rendered.parentRenders[name] = replacedTpl
 		} else {
